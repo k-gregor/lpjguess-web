@@ -1,0 +1,39 @@
+!
+! Instruction file with global PFTs to be used with the
+! demonstration I/O module.
+!
+
+import "global.ins"
+
+nyear 100
+nyear_spinup 1000
+npatch 15
+
+!///////////////////////////////////////////////////////////////////////
+! Forcing Data & gridlists
+!
+
+! Atmospheric CO2 content (ppmv)
+param "co2" (num 420)
+
+! Nitrogen deposition (kg/ha/year)
+param "ndep" (num 2)
+
+
+! Passen Sie den Pfad an, abhaenging davon, wo die Dateien auf Ihrem PC gespeichert sind.
+param "file_gridlist" (str "C:\Users\User\Documents\lpjguess\input_files\instructionfiles\gridlist.txt")
+
+! Passen Sie diese Pfade an, abhaenging davon, wo die Dateien auf Ihrem PC gespeichert sind.
+param "file_temp" (str "C:\Users\User\Documents\lpjguess\input_files\data\tmp30_21.grd")  ! temperature
+param "file_prec" (str "C:\Users\User\Documents\lpjguess\input_files\data\prc30_21.grd")  ! precipitation
+param "file_sun"  (str "C:\Users\User\Documents\lpjguess\input_files\data\clo30_21.grd")  ! sunshine
+param "file_soil" (str "C:\Users\User\Documents\lpjguess\input_files\data\soils_lpj.dat") ! Path to LPJ soil code file
+
+
+!///////////////////////////////////////////////////////////////////////
+! Demo input currently only works with the INTERP weather generator and
+! the fire model GLOBFIRM (or no fire with NOFIRE).
+
+firemodel "NOFIRE"
+weathergenerator "INTERP"
+

@@ -1,0 +1,13 @@
+! DO NOT CHANGE
+ifdisturb 1
+npatch 30
+firemodel "NOFIRE"
+
+param "const_clim" (num 0) ! the number of years to continue after spinup with constant climate
+param "const_co2" (num 0)
+param "no_dist_year" (num 1900) ! the year to turn disturbance off
+param "no_dist" (num 0)
+param "year_dist" (num 10000) ! the year to make a disturbance, set to high number if you don't want to use it
+param "first_output_year" (num 0)
+
+!file_veg_struct "veg_structure.out"

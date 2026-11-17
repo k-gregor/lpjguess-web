@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LPJ-GUESS Runner</title>
+<style>
+  :root { --bg:#fafaf8; --fg:#1d2321; --muted:#667; --card:#fff; --line:#d9ddd8; --accent:#2e7d4f;
+          --c1:#2e7d4f; --c2:#c47f1a; --c3:#7a5a3a; --c4:#2b5f9e; --c5:#b0413e; --c6:#7b4fa3; --c7:#1f9a9a; --c8:#8a8a2a; --c9:#d46a9a; --c10:#5a6b7a; --c11:#9c6b00; --c12:#3d3d3d; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#161a18; --fg:#e8ece9; --muted:#9aa5a0; --card:#1f2522; --line:#34403a; --accent:#4cb27a;
+            --c1:#5cc48a; --c2:#e0a04a; --c3:#b98d62; --c4:#6fa3e0; --c5:#e0706c; --c6:#a98bd0; --c7:#4cc0c0; --c8:#c8c85a; --c9:#e890b8; --c10:#8fa0b0; --c11:#d9a52e; --c12:#c8c8c8; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui,sans-serif; }
+  main { max-width:960px; margin:0 auto; padding:24px 16px; }
+  h1 { font-size:1.4rem; margin:0 0 16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:16px; }
+  form { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; }
+  label { display:flex; flex-direction:column; font-size:.85rem; color:var(--muted); gap:4px; }
+  input, select { font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:6px;
+                  background:var(--bg); color:var(--fg); }
+  .check { flex-direction:row; align-items:center; gap:8px; grid-column:1/-1; color:var(--fg); }
+  button { font:inherit; font-weight:600; padding:9px 18px; border:0; border-radius:6px; cursor:pointer;
+           background:var(--accent); color:#fff; grid-column:1/-1; justify-self:start; }
+  button.secondary { background:#b0413e; margin-left:-12px; }
+  button[hidden] { display:none; }
+  button:disabled { opacity:.5; cursor:wait; }
+  progress { width:100%; height:10px; }
+  #status { color:var(--muted); font-size:.9rem; margin-top:8px; }
+  #err { color:#c0392b; white-space:pre-wrap; font-family:monospace; font-size:.8rem; }
+  svg { width:100%; height:auto; display:block; }
+  .legend { display:flex; gap:16px; flex-wrap:wrap; font-size:.85rem; margin-top:8px; }
+  .legend i { display:inline-block; width:12px; height:12px; border-radius:2px; margin-right:6px; vertical-align:-1px; }
+  svg text { fill:var(--muted); font-size:11px; }
+  .grid { stroke:var(--line); stroke-width:1; }
+  .tip { font-size:.85rem; min-height:1.4em; }
+  h2 { font-size:1rem; margin:0 0 8px; }
+  #map { height:320px; border-radius:8px; border:1px solid var(--line); grid-column:1/-1; }
+  .months { grid-column:1/-1; display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:4px; }
+  .months span { font-size:.7rem; color:var(--muted); text-align:center; }
+  .months input { width:100%; padding:4px 2px; text-align:center; font-size:.8rem; }
+  .rowlabel { grid-column:1/-1; font-size:.85rem; color:var(--muted); margin-bottom:-6px; }
+</style>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+</head>
+<body>
+<main>
+  <h1>LPJ-GUESS &ndash; carbon pools &amp; vegetation carbon</h1>
+
+  <div class="card">
+    <form id="f">
+      <label>Instruction file
+        <select name="ins" id="ins"></select>
+      </label>
+      <label>Spin-up years <input type="number" name="spinup" value="500" min="101" max="2000"></label>
+      <label>Simulation years <input type="number" name="nyear" value="100" min="1" max="500"></label>
+      <label>Number of patches <input type="number" name="npatch" value="15" min="1" max="200"></label>
+      <div class="rowlabel" id="loclabel">Click the map to choose a location (snapped to the 0.5&deg; cell centre).</div>
+      <div id="map"></div>
+      <div class="rowlabel">Temperature change per month (&deg;C)</div>
+      <div class="months" id="tmonths"></div>
+      <div class="rowlabel">Precipitation factor per month (1 = no change)</div>
+      <div class="months" id="pmonths"></div>
+      <label>CO&#8322; factor <input type="number" step="0.05" min="0.1" name="co2" value="1"></label>
+      <button id="run" type="submit">Run model</button>
+      <button id="cancel" type="button" class="secondary" hidden>Cancel run</button>
+    </form>
+    <div id="status"></div>
+    <progress id="bar" max="100" value="0" hidden></progress>
+    <div id="err"></div>
+  </div>
+
+  <div class="card" id="plotcard" hidden>
+    <h2>Carbon pools (cpool.out)</h2>
+    <svg id="plot-cpool" viewBox="0 0 900 400" role="img" aria-label="Carbon pools over time"></svg>
+    <div class="legend" id="legend-cpool"></div>
+    <div class="tip" id="tip-cpool">Hover over the chart for values.</div>
+  </div>
+  <div class="card" id="plotcard2" hidden>
+    <h2>Vegetation carbon by PFT (cmass.out)</h2>
+    <svg id="plot-cmass" viewBox="0 0 900 400" role="img" aria-label="Vegetation carbon per PFT over time"></svg>
+    <div class="legend" id="legend-cmass"></div>
+    <div class="tip" id="tip-cmass">Hover over the chart for values.</div>
+  </div>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const NS = 'http://www.w3.org/2000/svg';
+const colors = ['var(--c1)', 'var(--c2)', 'var(--c3)', 'var(--c4)', 'var(--c5)', 'var(--c6)',
+                'var(--c7)', 'var(--c8)', 'var(--c9)', 'var(--c10)', 'var(--c11)', 'var(--c12)'];
+
+
+const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+let loc = {lon:11.25, lat:48.25}, map, marker;  // default: Freising
+
+for (const [id, name] of [['tmonths','t'], ['pmonths','p']])
+  $('#'+id).innerHTML = MON.map((m, i) =>
+    `<div><span>${m}</span><input type="number" step="0.1" data-${name}="${i}"${name==='p'?' min="0"':''}></div>`).join('');
+
+function fill() {  // initial values: no change
+  for (let i = 0; i < 12; i++) {
+    document.querySelector(`[data-t="${i}"]`).value = 0;
+    document.querySelector(`[data-p="${i}"]`).value = 1;
+  }
+  $('[name=co2]').value = 1;
+}
+
+fetch('manifest.json').then(r => r.json()).then(c => {
+  $('#ins').innerHTML = c.ins_files.map(f => `<option>${f}</option>`).join('');
+});
+fill();
+
+const snap = v => Math.floor(v * 2) / 2 + 0.25;
+function setLoc(lon, lat) {
+  loc = {lon: snap(lon), lat: snap(lat)};
+  $('#loclabel').textContent = `Selected cell centre: ${loc.lat.toFixed(2)}°, ${loc.lon.toFixed(2)}° (lat, lon) — click the map to change.`;
+  if (marker) {
+    marker.setLatLng([loc.lat, loc.lon]);
+  } else if (map) {
+    marker = L.marker([loc.lat, loc.lon]).addTo(map);
+  }
+}
+if (window.L) {
+  map = L.map('map').setView([loc.lat, loc.lon], 4);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    {maxZoom: 10, attribution: '&copy; OpenStreetMap contributors'}).addTo(map);
+  map.on('click', e => setLoc(((e.latlng.lng + 540) % 360) - 180, e.latlng.lat));
+}
+setLoc(loc.lon, loc.lat);
+
+let worker = null;
+
+function validate(b) {
+  if (!(b.spinup >= 101 && b.spinup <= 2000)) return 'Spin-up must be between 101 and 2000 years.';
+  if (!(b.nyear >= 1 && b.nyear <= 500)) return 'Simulation years must be between 1 and 500.';
+  if (!(b.npatch >= 1 && b.npatch <= 200)) return 'Number of patches must be between 1 and 200.';
+  if (b.prec.some(v => !(v >= 0)) || b.temp.some(v => isNaN(v))) return 'Monthly values must be numbers (precipitation factors >= 0).';
+  if (!(b.co2 > 0)) return 'CO2 factor must be positive.';
+  return null;
+}
+
+function finish(text) {
+  if (worker) { worker.terminate(); worker = null; }
+  $('#cancel').hidden = true; $('#run').disabled = false; $('#bar').hidden = true;
+  $('#status').textContent = text;
+}
+
+$('#f').onsubmit = e => {
+  e.preventDefault();
+  const fd = new FormData($('#f'));
+  const body = Object.fromEntries(fd.entries());
+  body.spinup = +body.spinup; body.nyear = +body.nyear; body.npatch = +body.npatch; body.co2 = +body.co2;
+  body.temp = [...document.querySelectorAll('[data-t]')].map(i => +i.value);
+  body.prec = [...document.querySelectorAll('[data-p]')].map(i => +i.value);
+  body.lon = loc.lon; body.lat = loc.lat;
+  $('#err').textContent = '';
+  const bad = validate(body);
+  if (bad) { $('#err').textContent = bad; return; }
+
+  $('#cancel').hidden = false; $('#cancel').disabled = false;
+  $('#run').disabled = true; $('#bar').hidden = false; $('#bar').value = 0;
+  $('#status').textContent = 'Starting…';
+  worker = new Worker('worker.js');
+  worker.onmessage = ev => {
+    const m = ev.data;
+    if (m.type === 'progress') {
+      $('#bar').value = m.pct;
+      $('#status').textContent = `Running model… ${m.pct}%`;
+    } else if (m.type === 'status') {
+      $('#status').textContent = m.text;
+    } else if (m.type === 'done') {
+      finish(`Finished. ${m.data.cpool.rows.length} years at ${body.lat.toFixed(2)}°, ${body.lon.toFixed(2)}°.`);
+      plot(m.data.cpool, 'cpool'); plot(m.data.cmass, 'cmass');
+      $('#plotcard2').hidden = false;
+    } else if (m.type === 'error') {
+      finish('Run failed.');
+      $('#err').textContent = m.error;
+    }
+  };
+  worker.onerror = ev => { finish('Run failed.'); $('#err').textContent = ev.message || 'Worker error'; };
+  worker.postMessage(body);
+};
+
+$('#cancel').onclick = () => finish('Run cancelled.');
+
+function el(name, attrs, parent) {
+  const n = document.createElementNS(NS, name);
+  for (const k in attrs) n.setAttribute(k, attrs[k]);
+  parent && parent.appendChild(n); return n;
+}
+
+function plot({columns, rows}, key) {
+  $('#plotcard').hidden = false;
+  const svg = $('#plot-' + key); svg.innerHTML = '';
+  const series = columns.filter(c => !['Lon','Lat','Year'].includes(c) &&
+    (c === 'Total' || rows.some(r => r[c] > 0)));  // hide PFTs that are zero everywhere
+  const W = 900, H = 400, m = {l:56, r:16, t:12, b:34};
+  const xs = rows.map(r => r.Year);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs);
+  const ymax = Math.max(...rows.flatMap(r => series.map(s => r[s]))) * 1.05 || 1;
+  const X = v => m.l + (v - x0) / Math.max(1, x1 - x0) * (W - m.l - m.r);
+  const Y = v => H - m.b - v / ymax * (H - m.t - m.b);
+
+  for (let i = 0; i <= 5; i++) {
+    const v = ymax * i / 5, y = Y(v);
+    el('line', {x1:m.l, x2:W-m.r, y1:y, y2:y, class:'grid'}, svg);
+    el('text', {x:m.l-6, y:y+4, 'text-anchor':'end'}, svg).textContent = v.toFixed(1);
+  }
+  for (let i = 0; i <= 5; i++) {
+    const v = Math.round(x0 + (x1 - x0) * i / 5);
+    el('text', {x:X(v), y:H-m.b+16, 'text-anchor':'middle'}, svg).textContent = v;
+  }
+  el('text', {x:14, y:H/2, transform:`rotate(-90 14 ${H/2})`, 'text-anchor':'middle'}, svg)
+    .textContent = 'kg C m⁻²';
+
+  series.forEach((s, i) => {
+    el('polyline', {fill:'none', stroke:colors[i % colors.length], 'stroke-width':2,
+      points: rows.map(r => `${X(r.Year)},${Y(r[s])}`).join(' ')}, svg);
+  });
+  $('#legend-' + key).innerHTML = series.map((s, i) =>
+    `<span><i style="background:${colors[i % colors.length]}"></i>${s}</span>`).join('');
+
+  const cur = el('line', {y1:m.t, y2:H-m.b, stroke:'var(--muted)', 'stroke-dasharray':'3 3', visibility:'hidden'}, svg);
+  svg.onmousemove = e => {
+    const rect = svg.getBoundingClientRect();
+    const px = (e.clientX - rect.left) / rect.width * W;
+    const yr = Math.min(x1, Math.max(x0, Math.round(x0 + (px - m.l) / (W - m.l - m.r) * (x1 - x0))));
+    const r = rows.find(r => r.Year === yr); if (!r) return;
+    cur.setAttribute('x1', X(yr)); cur.setAttribute('x2', X(yr)); cur.setAttribute('visibility', 'visible');
+    $('#tip-' + key).textContent = `Year ${yr}: ` + series.map(s => `${s} ${r[s].toFixed(2)}`).join(' · ');
+  };
+}
+</script>
+</body>
+</html>
