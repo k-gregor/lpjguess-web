@@ -54,6 +54,12 @@
       <label>Spin-up years <input type="number" name="spinup" value="500" min="101" max="2000"></label>
       <label>Simulation years <input type="number" name="nyear" value="100" min="1" max="500"></label>
       <label>Number of patches <input type="number" name="npatch" value="15" min="1" max="200"></label>
+      <label>Firemodel
+        <select name="firemodel">
+          <option value="NOFIRE">NOFIRE</option>
+          <option value="GLOBFIRM">GLOBFIRM</option>
+        </select>
+      </label>
       <div class="rowlabel" id="loclabel">Click the map to choose a location (snapped to the 0.5&deg; cell centre).</div>
       <div id="map"></div>
       <div class="rowlabel">Temperature change per month (&deg;C)</div>
@@ -141,6 +147,7 @@ function validate(b) {
   if (!(b.nyear >= 1 && b.nyear <= 500)) return 'Simulation years must be between 1 and 500.';
   if (!(b.npatch >= 1 && b.npatch <= 200)) return 'Number of patches must be between 1 and 200.';
   if (b.prec.some(v => !(v >= 0)) || b.temp.some(v => isNaN(v))) return 'Monthly values must be numbers (precipitation factors >= 0).';
+  if (!['NOFIRE', 'GLOBFIRM'].includes(b.firemodel)) return 'Unknown fire model.';
   if (!(b.co2 > 0)) return 'CO2 factor must be positive.';
   return null;
 }

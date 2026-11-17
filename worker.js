@@ -18,6 +18,7 @@ outputdirectory "/run/"
 nyear ${p.nyear}
 nyear_spinup ${p.spinup}
 npatch ${p.npatch}
+firemodel "${p.firemodel}"
 param "file_gridlist" (str "/run/gridlist.txt")
 param "file_temp" (str "/in/tmp30_21.grd")
 param "file_prec" (str "/in/prc30_21.grd")
