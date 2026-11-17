@@ -13,7 +13,7 @@ function parseOut(text) {
 }
 
 function insText(p) {
-  return `import "/in/${p.ins}"
+  return `import "/in/teaching_default.ins"
 outputdirectory "/run/"
 nyear ${p.nyear}
 nyear_spinup ${p.spinup}
@@ -58,7 +58,11 @@ onmessage = async e => {
       postMessage({type: 'error', error: (read('guess.log') || printed.join('\n')).split('\n').slice(-15).join('\n')});
       return;
     }
-    postMessage({type: 'done', data: {cpool: parseOut(cpool), cmass: parseOut(cmass)}});
+    const files = {};
+    for (const f of FS.readdir('/run').filter(f => f.endsWith('.out'))) files[f] = read(f);
+    const cflux = files['cflux.out'];
+    postMessage({type: 'done', data: {cpool: parseOut(cpool), cmass: parseOut(cmass),
+                                      cflux: cflux ? parseOut(cflux) : null, files}});
   } catch (err) {
     postMessage({type: 'error', error: String(err)});
   }

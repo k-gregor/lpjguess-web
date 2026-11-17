@@ -23,7 +23,7 @@
   .check { flex-direction:row; align-items:center; gap:8px; grid-column:1/-1; color:var(--fg); }
   button { font:inherit; font-weight:600; padding:9px 18px; border:0; border-radius:6px; cursor:pointer;
            background:var(--accent); color:#fff; grid-column:1/-1; justify-self:start; }
-  button.secondary { background:#b0413e; margin-left:-12px; }
+  button.secondary { background:#b0413e; }
   button[hidden] { display:none; }
   button:disabled { opacity:.5; cursor:wait; }
   progress { width:100%; height:10px; }
@@ -51,9 +51,6 @@
 
   <div class="card">
     <form id="f">
-      <label>Instruction file
-        <select name="ins" id="ins"></select>
-      </label>
       <label>Spin-up years <input type="number" name="spinup" value="500" min="101" max="2000"></label>
       <label>Simulation years <input type="number" name="nyear" value="100" min="1" max="500"></label>
       <label>Number of patches <input type="number" name="npatch" value="15" min="1" max="200"></label>
@@ -78,11 +75,20 @@
     <div class="legend" id="legend-cpool"></div>
     <div class="tip" id="tip-cpool">Hover over the chart for values.</div>
   </div>
+  <div class="card" id="plotcard3" hidden>
+    <h2>Carbon fluxes (cflux.out)</h2>
+    <svg id="plot-cflux" viewBox="0 0 900 400" role="img" aria-label="Carbon fluxes over time"></svg>
+    <div class="legend" id="legend-cflux"></div>
+    <div class="tip" id="tip-cflux">Hover over the chart for values. Negative NEE = net carbon uptake by the ecosystem.</div>
+  </div>
   <div class="card" id="plotcard2" hidden>
     <h2>Vegetation carbon by PFT (cmass.out)</h2>
     <svg id="plot-cmass" viewBox="0 0 900 400" role="img" aria-label="Vegetation carbon per PFT over time"></svg>
     <div class="legend" id="legend-cmass"></div>
     <div class="tip" id="tip-cmass">Hover over the chart for values.</div>
+  </div>
+  <div class="card" id="dlcard" hidden>
+    <button id="download" type="button">Download all .out files (.zip)</button>
   </div>
 </main>
 
@@ -108,9 +114,6 @@ function fill() {  // initial values: no change
   $('[name=co2]').value = 1;
 }
 
-fetch('manifest.json').then(r => r.json()).then(c => {
-  $('#ins').innerHTML = c.ins_files.map(f => `<option>${f}</option>`).join('');
-});
 fill();
 
 const snap = v => Math.floor(v * 2) / 2 + 0.25;
@@ -144,7 +147,7 @@ function validate(b) {
 
 function finish(text) {
   if (worker) { worker.terminate(); worker = null; }
-  $('#cancel').hidden = true; $('#run').disabled = false; $('#bar').hidden = true;
+  $('#cancel').hidden = true; $('#run').hidden = false; $('#run').disabled = false; $('#bar').hidden = true;
   $('#status').textContent = text;
 }
 
@@ -161,7 +164,7 @@ $('#f').onsubmit = e => {
   if (bad) { $('#err').textContent = bad; return; }
 
   $('#cancel').hidden = false; $('#cancel').disabled = false;
-  $('#run').disabled = true; $('#bar').hidden = false; $('#bar').value = 0;
+  $('#run').hidden = true; $('#bar').hidden = false; $('#bar').value = 0;
   $('#status').textContent = 'Starting…';
   worker = new Worker('worker.js');
   worker.onmessage = ev => {
@@ -173,8 +176,11 @@ $('#f').onsubmit = e => {
       $('#status').textContent = m.text;
     } else if (m.type === 'done') {
       finish(`Finished. ${m.data.cpool.rows.length} years at ${body.lat.toFixed(2)}°, ${body.lon.toFixed(2)}°.`);
-      plot(m.data.cpool, 'cpool'); plot(m.data.cmass, 'cmass');
+      plot(m.data.cpool, 'cpool', 'kg C m⁻²'); plot(m.data.cmass, 'cmass', 'kg C m⁻²');
+      if (m.data.cflux) { plot(m.data.cflux, 'cflux', 'kg C m⁻² yr⁻¹'); $('#plotcard3').hidden = false; }
       $('#plotcard2').hidden = false;
+      lastFiles = m.data.files; lastName = `lpjguess_${body.lat}_${body.lon}`;
+      $('#dlcard').hidden = false;
     } else if (m.type === 'error') {
       finish('Run failed.');
       $('#err').textContent = m.error;
@@ -186,36 +192,70 @@ $('#f').onsubmit = e => {
 
 $('#cancel').onclick = () => finish('Run cancelled.');
 
+// --- download all .out files as a zip (minimal "stored" zip writer, no library needed) ---
+let lastFiles = null, lastName = 'lpjguess';
+const crcTable = (() => { const t = []; for (let n = 0; n < 256; n++) { let c = n;
+  for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+const crc32 = b => { let c = 0xFFFFFFFF; for (const x of b) c = crcTable[(c ^ x) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+function makeZip(files) {  // files: {name: text}
+  const enc = new TextEncoder(), parts = [], central = []; let offset = 0;
+  for (const [name, text] of Object.entries(files)) {
+    const n = enc.encode(name), d = enc.encode(text), crc = crc32(d);
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(12, 0x21, true); lh.setUint32(14, crc, true);  // 0x21 = DOS date 1980-01-01
+    lh.setUint32(18, d.length, true); lh.setUint32(22, d.length, true); lh.setUint16(26, n.length, true);
+    parts.push(lh.buffer, n, d);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(14, 0x21, true);
+    ch.setUint32(16, crc, true); ch.setUint32(20, d.length, true); ch.setUint32(24, d.length, true);
+    ch.setUint16(28, n.length, true); ch.setUint32(42, offset, true);
+    central.push(ch.buffer, n);
+    offset += 30 + n.length + d.length;
+  }
+  const csize = central.reduce((s, b) => s + b.byteLength, 0), end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, central.length / 2, true);
+  end.setUint16(10, central.length / 2, true); end.setUint32(12, csize, true); end.setUint32(16, offset, true);
+  return new Blob([...parts, ...central, end.buffer], {type: 'application/zip'});
+}
+$('#download').onclick = () => {
+  if (!lastFiles) return;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(makeZip(lastFiles)); a.download = lastName + '.zip';
+  a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+};
+
 function el(name, attrs, parent) {
   const n = document.createElementNS(NS, name);
   for (const k in attrs) n.setAttribute(k, attrs[k]);
   parent && parent.appendChild(n); return n;
 }
 
-function plot({columns, rows}, key) {
+function plot({columns, rows}, key, unit) {
   $('#plotcard').hidden = false;
   const svg = $('#plot-' + key); svg.innerHTML = '';
   const series = columns.filter(c => !['Lon','Lat','Year'].includes(c) &&
-    (c === 'Total' || rows.some(r => r[c] > 0)));  // hide PFTs that are zero everywhere
+    (c === 'Total' || rows.some(r => r[c] !== 0)));  // hide series that are zero everywhere
   const W = 900, H = 400, m = {l:56, r:16, t:12, b:34};
   const xs = rows.map(r => r.Year);
   const x0 = Math.min(...xs), x1 = Math.max(...xs);
-  const ymax = Math.max(...rows.flatMap(r => series.map(s => r[s]))) * 1.05 || 1;
+  const vals = rows.flatMap(r => series.map(s => r[s]));
+  const ymax = Math.max(0, ...vals) * 1.05, ymin = Math.min(0, ...vals) * 1.05, span = (ymax - ymin) || 1;
   const X = v => m.l + (v - x0) / Math.max(1, x1 - x0) * (W - m.l - m.r);
-  const Y = v => H - m.b - v / ymax * (H - m.t - m.b);
+  const Y = v => H - m.b - (v - ymin) / span * (H - m.t - m.b);
 
   for (let i = 0; i <= 5; i++) {
-    const v = ymax * i / 5, y = Y(v);
+    const v = ymin + span * i / 5, y = Y(v);
     el('line', {x1:m.l, x2:W-m.r, y1:y, y2:y, class:'grid'}, svg);
-    el('text', {x:m.l-6, y:y+4, 'text-anchor':'end'}, svg).textContent = v.toFixed(1);
+    el('text', {x:m.l-6, y:y+4, 'text-anchor':'end'}, svg).textContent = (Math.abs(v) < 1e-9 ? 0 : v).toFixed(1);
   }
   for (let i = 0; i <= 5; i++) {
     const v = Math.round(x0 + (x1 - x0) * i / 5);
     el('text', {x:X(v), y:H-m.b+16, 'text-anchor':'middle'}, svg).textContent = v;
   }
   el('text', {x:14, y:H/2, transform:`rotate(-90 14 ${H/2})`, 'text-anchor':'middle'}, svg)
-    .textContent = 'kg C m⁻²';
+    .textContent = unit;
 
+  if (ymin < 0) el('line', {x1:m.l, x2:W-m.r, y1:Y(0), y2:Y(0), stroke:'var(--muted)', 'stroke-width':1.5}, svg);
   series.forEach((s, i) => {
     el('polyline', {fill:'none', stroke:colors[i % colors.length], 'stroke-width':2,
       points: rows.map(r => `${X(r.Year)},${Y(r[s])}`).join(' ')}, svg);
