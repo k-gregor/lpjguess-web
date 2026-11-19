@@ -75,6 +75,16 @@
     <div id="err"></div>
   </div>
 
+  <div class="card" id="climcard">
+    <h2>Present climate</h2>
+    <svg id="plot-clim0" viewBox="0 0 900 300" role="img" aria-label="Present monthly temperature and precipitation"></svg>
+    <h2 style="margin-top:16px">Future climate</h2>
+    <svg id="plot-clim1" viewBox="0 0 900 300" role="img" aria-label="Future monthly temperature and precipitation"></svg>
+    <div class="legend"><span><i style="background:var(--c4)"></i>Precipitation (mm/month)</span>
+      <span><i style="background:var(--c5)"></i>Temperature (&deg;C)</span></div>
+    <div class="tip" id="climmsg"></div>
+  </div>
+
   <div class="card" id="plotcard" hidden>
     <h2>Carbon pools (cpool.out)</h2>
     <svg id="plot-cpool" viewBox="0 0 900 400" role="img" aria-label="Carbon pools over time"></svg>
@@ -125,6 +135,7 @@ fill();
 const snap = v => Math.floor(v * 2) / 2 + 0.25;
 function setLoc(lon, lat) {
   loc = {lon: snap(lon), lat: snap(lat)};
+  if (window.climReady) onLocChange();
   $('#loclabel').textContent = `Selected cell centre: ${loc.lat.toFixed(2)}°, ${loc.lon.toFixed(2)}° (lat, lon) — click the map to change.`;
   if (marker) {
     marker.setLatLng([loc.lat, loc.lon]);
@@ -280,6 +291,80 @@ function plot({columns, rows}, key, unit) {
     $('#tip-' + key).textContent = `Year ${yr}: ` + series.map(s => `${s} ${r[s].toFixed(2)}`).join(' · ');
   };
 }
+const gridCache = {};
+async function loadClimate(lon, lat) {
+  const key = [Math.round(lon * 100), Math.round(lat * 100)];
+  const get = async name => {
+    gridCache[name] = gridCache[name] || fetch('in/' + name).then(r => r.text());
+    const text = await gridCache[name];
+    // fixed width records: lon*100 (6), lat*100 (5), elevation (4), then 12 x 4 characters
+    const prefix = String(key[0]).padStart(6) + String(key[1]).padStart(5);
+    let i = text.startsWith(prefix) ? 0 : text.indexOf('\n' + prefix) + 1;
+    if (i <= 0 && !text.startsWith(prefix)) return null;
+    const line = text.slice(i, text.indexOf('\n', i));
+    return Array.from({length: 12}, (_, k) => +line.substr(15 + 4 * k, 4));
+  };
+  const [t, p] = await Promise.all([get('tmp30_21.grd'), get('prc30_21.grd')]);
+  return t && p ? {temp: t.map(v => v / 10), prec: p} : null;
+}
+
+// --- monthly climate diagrams: present (from the data files) and future (with the "modify" values) ---
+let climate0 = null, climReq = 0;
+function niceMax(v) {
+  const p = Math.pow(10, Math.floor(Math.log10(v || 1))), f = v / p;
+  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p;
+}
+function climChart(svg, temp, prec, ax) {
+  svg.innerHTML = '';
+  const W = 900, H = 300, m = {l:56, r:56, t:12, b:30}, bw = (W - m.l - m.r) / 12;
+  const X = i => m.l + (i + .5) * bw;
+  const Yp = v => H - m.b - v / ax.pmax * (H - m.t - m.b);
+  const Yt = v => H - m.b - (v - ax.tmin) / (ax.tmax - ax.tmin) * (H - m.t - m.b);
+  for (let i = 0; i <= 5; i++) {
+    const y = Yp(ax.pmax * i / 5);
+    el('line', {x1:m.l, x2:W-m.r, y1:y, y2:y, class:'grid'}, svg);
+    el('text', {x:m.l-6, y:y+4, 'text-anchor':'end'}, svg).textContent = Math.round(ax.pmax * i / 5);
+    el('text', {x:W-m.r+6, y:y+4}, svg).textContent = (ax.tmin + (ax.tmax - ax.tmin) * i / 5).toFixed(0);
+  }
+  MON.forEach((mn, i) => el('text', {x:X(i), y:H-m.b+16, 'text-anchor':'middle'}, svg).textContent = mn);
+  el('text', {x:14, y:H/2, transform:`rotate(-90 14 ${H/2})`, 'text-anchor':'middle'}, svg).textContent = 'mm / month';
+  el('text', {x:W-12, y:H/2, transform:`rotate(90 ${W-12} ${H/2})`, 'text-anchor':'middle'}, svg).textContent = '°C';
+  prec.forEach((v, i) => {
+    const y = Yp(v);
+    const r = el('rect', {x:X(i) - bw * .32, y, width:bw * .64, height:Math.max(0, H - m.b - y), fill:'var(--c4)', opacity:.75}, svg);
+    el('title', {}, r).textContent = `${MON[i]}: ${v.toFixed(0)} mm, ${temp[i].toFixed(1)} °C`;
+  });
+  el('polyline', {fill:'none', stroke:'var(--c5)', 'stroke-width':2.5, points:temp.map((v, i) => `${X(i)},${Yt(v)}`).join(' ')}, svg);
+  temp.forEach((v, i) => el('circle', {cx:X(i), cy:Yt(v), r:3, fill:'var(--c5)'}, svg));
+}
+function drawClimate() {
+  if (!climate0) { $('#plot-clim0').innerHTML = ''; $('#plot-clim1').innerHTML = ''; return; }
+  const t1 = climate0.temp.map((v, i) => v + (+document.querySelector(`[data-t="${i}"]`).value || 0));
+  const p1 = climate0.prec.map((v, i) => v * Math.max(0, +document.querySelector(`[data-p="${i}"]`).value || 0));
+  // identical axes in both diagrams so they can be compared directly
+  const allT = climate0.temp.concat(t1), tlo = Math.min(0, ...allT), thi = Math.max(...allT);
+  const tstep = niceMax((thi - tlo) / 5 || 1) , tmin = Math.floor(tlo / tstep) * tstep;
+  const ax = {pmax: niceMax(Math.max(...climate0.prec, ...p1) * 1.05), tmin, tmax: tmin + tstep * 5};
+  if (ax.tmax < thi) ax.tmax = tmin + tstep * Math.ceil((thi - tmin) / tstep);
+  climChart($('#plot-clim0'), climate0.temp, climate0.prec, ax);
+  climChart($('#plot-clim1'), t1, p1, ax);
+}
+async function onLocChange() {
+  const req = ++climReq;
+  $('#climmsg').textContent = 'Loading climate…';
+  try {
+    const c = await loadClimate(loc.lon, loc.lat);
+    if (req !== climReq) return;
+    climate0 = c;
+    $('#climmsg').textContent = c ? '' : 'No climate data for this location (ocean?).';
+  } catch (err) {
+    if (req !== climReq) return;
+    climate0 = null; $('#climmsg').textContent = 'Could not load climate data.';
+  }
+  drawClimate();
+}
+document.addEventListener('input', e => { if (e.target.matches('[data-t],[data-p]')) drawClimate(); });
+window.climReady = true; onLocChange();
 </script>
 </body>
 </html>
