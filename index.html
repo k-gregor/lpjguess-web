@@ -67,24 +67,23 @@
       <div class="rowlabel">Precipitation factor per month (1 = no change)</div>
       <div class="months" id="pmonths"></div>
       <label>CO&#8322; factor <input type="number" step="0.05" min="0.1" name="co2" value="1"></label>
+      <div id="climcard" style="grid-column:1/-1">
+      <div class="rowlabel" style="margin-bottom:4px">Present vs. future climate</div>
+      <svg id="plot-clim" viewBox="0 0 900 340" role="img" aria-label="Present and future monthly temperature and precipitation"></svg>
+      <div class="legend">
+        <span><i style="background:var(--c4)"></i>Present climate: precipitation</span>
+        <span><i style="background:var(--c4);opacity:.4"></i>Future climate: precipitation</span>
+        <span><i style="background:var(--c5)"></i>Present climate: temperature</span>
+        <span><i style="background:none;border-top:2px dashed var(--c2);height:0;border-radius:0;vertical-align:3px"></i>Future climate: temperature</span>
+      </div>
+      <div class="tip" id="climmsg"></div>
+      </div>
       <button id="run" type="submit">Run model</button>
       <button id="cancel" type="button" class="secondary" hidden>Cancel run</button>
     </form>
     <div id="status"></div>
     <progress id="bar" max="100" value="0" hidden></progress>
     <div id="err"></div>
-  </div>
-
-  <div class="card" id="climcard">
-    <h2>Present vs. future climate</h2>
-    <svg id="plot-clim" viewBox="0 0 900 340" role="img" aria-label="Present and future monthly temperature and precipitation"></svg>
-    <div class="legend">
-      <span><i style="background:var(--c4)"></i>Present climate: precipitation</span>
-      <span><i style="background:var(--c4);opacity:.4"></i>Future climate: precipitation</span>
-      <span><i style="background:var(--c5)"></i>Present climate: temperature</span>
-      <span><i style="background:none;border-top:2px dashed var(--c2);height:0;border-radius:0;vertical-align:3px"></i>Future climate: temperature</span>
-    </div>
-    <div class="tip" id="climmsg"></div>
   </div>
 
   <div class="card" id="plotcard" hidden>
