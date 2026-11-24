@@ -45,7 +45,8 @@
   #map { height:320px; border-radius:8px; border:1px solid var(--line); grid-column:1/-1; }
   .months { grid-column:1/-1; display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:4px; }
   .months span { font-size:.7rem; color:var(--muted); text-align:center; }
-  .months input { width:100%; padding:4px 2px; text-align:center; font-size:.8rem; }
+  .months input { width:100%; padding:4px 2px; text-align:center; font-size:.8rem; -moz-appearance:textfield; appearance:textfield; }
+  .months input::-webkit-outer-spin-button, .months input::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
   .inline { display:flex; gap:8px; align-items:center; }
   .inline input[type=number] { flex:1; min-width:0; }
   .inline label { flex-direction:row; align-items:center; gap:4px; color:var(--fg); white-space:nowrap; }
@@ -83,7 +84,7 @@
       <div class="months" id="tmonths"></div>
       <div class="rowlabel">Precipitation factor per month (1 = no change)</div>
       <div class="months" id="pmonths"></div>
-      <label>CO&#8322; factor <input type="number" step="0.05" min="0.1" name="co2" value="1"></label>
+      <label>CO&#8322; factor <input type="number" step="any" min="0.1" name="co2" value="1"></label>
       <div id="climcard" style="grid-column:1/-1">
       <div class="rowlabel" style="margin-bottom:4px">Present vs. future climate</div>
       <svg id="plot-clim" viewBox="0 0 900 340" role="img" aria-label="Present and future monthly temperature and precipitation"></svg>
@@ -162,7 +163,7 @@ let loc = {lon:11.25, lat:48.25}, map, marker;  // default: Freising
 
 for (const [id, name] of [['tmonths','t'], ['pmonths','p']])
   $('#'+id).innerHTML = MON.map((m, i) =>
-    `<div><span>${m}</span><input type="number" step="0.1" data-${name}="${i}"${name==='p'?' min="0"':''}></div>`).join('');
+    `<div><span>${m}</span><input type="number" step="any" data-${name}="${i}"${name==='p'?' min="0"':''}></div>`).join('');
 
 function fill() {  // initial values: no change
   for (let i = 0; i < 12; i++) {

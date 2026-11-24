@@ -32,6 +32,28 @@ modify_co2 ${p.co2}
 `;
 }
 
+function paramsText(p) {
+  const mon = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const row = v => mon.map((m, i) => `${m}=${v[i]}`).join('  ');
+  return `LPJ-GUESS web run - parameters used
+Run started:            ${new Date().toISOString()}
+
+Location (cell centre): lat ${p.lat}, lon ${p.lon}
+Spin-up years:          ${p.spinup}
+Simulation years:       ${p.nyear}
+Number of patches:      ${p.npatch}
+Fire model:             ${p.firemodel}
+Disturbance:            ${p.ifdisturb ? `on, interval ${p.distinterval} years` : 'off'}
+CO2 factor:             ${p.co2}
+Temperature change (degC per month):
+  ${row(p.temp)}
+Precipitation factor (per month):
+  ${row(p.prec)}
+
+--- Instruction file passed to the model (run.ins) ---
+${insText(p)}`;
+}
+
 onmessage = async e => {
   const p = e.data;
   const printed = [];
@@ -63,6 +85,7 @@ onmessage = async e => {
     }
     const files = {};
     for (const f of FS.readdir('/run').filter(f => f.endsWith('.out'))) files[f] = read(f);
+    files['parameters.txt'] = paramsText(p);
     const opt = f => files[f] ? parseOut(files[f]) : null;
     const gpp = opt('agpp.out'), npp = opt('anpp.out');
     // GPP and NPP in one plot: only the stand totals, otherwise there would be two lines per PFT
