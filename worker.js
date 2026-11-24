@@ -63,9 +63,13 @@ onmessage = async e => {
     }
     const files = {};
     for (const f of FS.readdir('/run').filter(f => f.endsWith('.out'))) files[f] = read(f);
-    const cflux = files['cflux.out'];
-    postMessage({type: 'done', data: {cpool: parseOut(cpool), cmass: parseOut(cmass),
-                                      cflux: cflux ? parseOut(cflux) : null, files}});
+    const opt = f => files[f] ? parseOut(files[f]) : null;
+    const gpp = opt('agpp.out'), npp = opt('anpp.out');
+    // GPP and NPP in one plot: only the stand totals, otherwise there would be two lines per PFT
+    const prod = gpp && npp ? {columns: ['Year', 'GPP', 'NPP'],
+      rows: gpp.rows.map((r, i) => ({Year: r.Year, GPP: r.Total, NPP: npp.rows[i] ? npp.rows[i].Total : NaN}))} : null;
+    postMessage({type: 'done', data: {cpool: parseOut(cpool), cmass: parseOut(cmass), cflux: opt('cflux.out'),
+                                      prod, aaet: opt('aaet.out'), runoff: opt('tot_runoff.out'), files}});
   } catch (err) {
     postMessage({type: 'error', error: String(err)});
   }

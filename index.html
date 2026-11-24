@@ -36,6 +36,12 @@
   .grid { stroke:var(--line); stroke-width:1; }
   .tip { font-size:.85rem; min-height:1.4em; }
   h2 { font-size:1rem; margin:0 0 8px; }
+  .plots { max-width:1500px; margin:0 auto 16px; padding:0 16px; display:grid; grid-template-columns:1fr; gap:16px; }
+  .plots[hidden] { display:none; }
+  .plots .card { margin:0; min-width:0; }
+  .plots svg text { font-size:15px; }
+  @media (min-width:760px) { .plots { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+  @media (min-width:1200px) { .plots { grid-template-columns:repeat(3,minmax(0,1fr)); } }
   #map { height:320px; border-radius:8px; border:1px solid var(--line); grid-column:1/-1; }
   .months { grid-column:1/-1; display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:4px; }
   .months span { font-size:.7rem; color:var(--muted); text-align:center; }
@@ -97,24 +103,48 @@
     <div id="err"></div>
   </div>
 
-  <div class="card" id="plotcard" hidden>
+</main>
+
+<section class="plots" id="plots" hidden>
+  <div class="card">
     <h2>Carbon pools (cpool.out)</h2>
-    <svg id="plot-cpool" viewBox="0 0 900 400" role="img" aria-label="Carbon pools over time"></svg>
+    <svg id="plot-cpool" viewBox="0 0 600 420" role="img" aria-label="Carbon pools over time"></svg>
     <div class="legend" id="legend-cpool"></div>
     <div class="tip" id="tip-cpool">Hover over the chart for values.</div>
   </div>
-  <div class="card" id="plotcard3" hidden>
-    <h2>Carbon fluxes (cflux.out)</h2>
-    <svg id="plot-cflux" viewBox="0 0 900 400" role="img" aria-label="Carbon fluxes over time"></svg>
-    <div class="legend" id="legend-cflux"></div>
-    <div class="tip" id="tip-cflux">Hover over the chart for values. Negative NEE = net carbon uptake by the ecosystem.</div>
-  </div>
-  <div class="card" id="plotcard2" hidden>
+  <div class="card">
     <h2>Vegetation carbon by PFT (cmass.out)</h2>
-    <svg id="plot-cmass" viewBox="0 0 900 400" role="img" aria-label="Vegetation carbon per PFT over time"></svg>
+    <svg id="plot-cmass" viewBox="0 0 600 420" role="img" aria-label="Vegetation carbon per PFT over time"></svg>
     <div class="legend" id="legend-cmass"></div>
     <div class="tip" id="tip-cmass">Hover over the chart for values.</div>
   </div>
+  <div class="card">
+    <h2>Carbon fluxes (cflux.out)</h2>
+    <svg id="plot-cflux" viewBox="0 0 600 420" role="img" aria-label="Carbon fluxes over time"></svg>
+    <div class="legend" id="legend-cflux"></div>
+    <div class="tip" id="tip-cflux">Hover over the chart for values. Negative NEE = net carbon uptake by the ecosystem.</div>
+  </div>
+  <div class="card">
+    <h2>GPP &amp; NPP (agpp.out, anpp.out)</h2>
+    <svg id="plot-prod" viewBox="0 0 600 420" role="img" aria-label="Total gross and net primary production over time"></svg>
+    <div class="legend" id="legend-prod"></div>
+    <div class="tip" id="tip-prod">Hover over the chart for values.</div>
+  </div>
+  <div class="card">
+    <h2>Actual evapotranspiration by PFT (aaet.out)</h2>
+    <svg id="plot-aaet" viewBox="0 0 600 420" role="img" aria-label="Actual evapotranspiration per PFT over time"></svg>
+    <div class="legend" id="legend-aaet"></div>
+    <div class="tip" id="tip-aaet">Hover over the chart for values.</div>
+  </div>
+  <div class="card">
+    <h2>Runoff (tot_runoff.out)</h2>
+    <svg id="plot-runoff" viewBox="0 0 600 420" role="img" aria-label="Runoff components over time"></svg>
+    <div class="legend" id="legend-runoff"></div>
+    <div class="tip" id="tip-runoff">Hover over the chart for values.</div>
+  </div>
+</section>
+
+<main style="padding-top:0">
   <div class="card" id="dlcard" hidden>
     <button id="download" type="button">Download all .out files (.zip)</button>
   </div>
@@ -211,9 +241,13 @@ $('#f').onsubmit = e => {
       $('#status').textContent = m.text;
     } else if (m.type === 'done') {
       finish(`Finished. ${m.data.cpool.rows.length} years at ${body.lat.toFixed(2)}°, ${body.lon.toFixed(2)}°.`);
-      plot(m.data.cpool, 'cpool', 'kg C m⁻²'); plot(m.data.cmass, 'cmass', 'kg C m⁻²');
-      if (m.data.cflux) { plot(m.data.cflux, 'cflux', 'kg C m⁻² yr⁻¹'); $('#plotcard3').hidden = false; }
-      $('#plotcard2').hidden = false;
+      $('#plots').hidden = false;
+      const d = m.data;
+      for (const [k, unit] of [['cpool', 'kg C m⁻²'], ['cmass', 'kg C m⁻²'], ['cflux', 'kg C m⁻² yr⁻¹'],
+                               ['prod', 'kg C m⁻² yr⁻¹'], ['aaet', 'mm yr⁻¹'], ['runoff', 'mm yr⁻¹']]) {
+        $('#plot-' + k).parentNode.hidden = !d[k];
+        if (d[k]) plot(d[k], k, unit);
+      }
       lastFiles = m.data.files; lastName = `lpjguess_${body.lat}_${body.lon}`;
       $('#dlcard').hidden = false;
     } else if (m.type === 'error') {
@@ -266,11 +300,10 @@ function el(name, attrs, parent) {
 }
 
 function plot({columns, rows}, key, unit) {
-  $('#plotcard').hidden = false;
   const svg = $('#plot-' + key); svg.innerHTML = '';
   const series = columns.filter(c => !['Lon','Lat','Year'].includes(c) &&
     (c === 'Total' || rows.some(r => r[c] !== 0)));  // hide series that are zero everywhere
-  const W = 900, H = 400, m = {l:56, r:16, t:12, b:34};
+  const W = 600, H = 420, m = {l:62, r:14, t:12, b:38};
   const xs = rows.map(r => r.Year);
   const x0 = Math.min(...xs), x1 = Math.max(...xs);
   const vals = rows.flatMap(r => series.map(s => r[s]));
@@ -285,7 +318,7 @@ function plot({columns, rows}, key, unit) {
   }
   for (let i = 0; i <= 5; i++) {
     const v = Math.round(x0 + (x1 - x0) * i / 5);
-    el('text', {x:X(v), y:H-m.b+16, 'text-anchor':'middle'}, svg).textContent = v;
+    el('text', {x:X(v), y:H-m.b+20, 'text-anchor':'middle'}, svg).textContent = v;
   }
   el('text', {x:14, y:H/2, transform:`rotate(-90 14 ${H/2})`, 'text-anchor':'middle'}, svg)
     .textContent = unit;
