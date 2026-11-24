@@ -16,7 +16,7 @@
   main { max-width:960px; margin:0 auto; padding:24px 16px; }
   h1 { font-size:1.4rem; margin:0 0 16px; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:16px; }
-  form { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; }
+  form { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; }
   label { display:flex; flex-direction:column; font-size:.85rem; color:var(--muted); gap:4px; }
   input, select { font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:6px;
                   background:var(--bg); color:var(--fg); }
@@ -40,6 +40,10 @@
   .months { grid-column:1/-1; display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:4px; }
   .months span { font-size:.7rem; color:var(--muted); text-align:center; }
   .months input { width:100%; padding:4px 2px; text-align:center; font-size:.8rem; }
+  .inline { display:flex; gap:8px; align-items:center; }
+  .inline input[type=number] { flex:1; min-width:0; }
+  .inline label { flex-direction:row; align-items:center; gap:4px; color:var(--fg); white-space:nowrap; }
+  input:disabled { opacity:.5; }
   .rowlabel { grid-column:1/-1; font-size:.85rem; color:var(--muted); margin-bottom:-6px; }
 </style>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -60,6 +64,13 @@
           <option value="GLOBFIRM">GLOBFIRM</option>
         </select>
       </label>
+      <div>
+        <label for="distinterval">Disturbance interval (years)</label>
+        <div class="inline" style="margin-top:4px">
+          <input type="number" id="distinterval" name="distinterval" value="100" min="1" max="2000">
+          <label><input type="checkbox" id="nodist"> Off</label>
+        </div>
+      </div>
       <div class="rowlabel" id="loclabel">Click the map to choose a location (snapped to the 0.5&deg; cell centre).</div>
       <div id="map"></div>
       <div class="rowlabel">Temperature change per month (&deg;C)</div>
@@ -132,6 +143,7 @@ function fill() {  // initial values: no change
 }
 
 fill();
+$('#nodist').onchange = () => { $('#distinterval').disabled = $('#nodist').checked; };
 
 const snap = v => Math.floor(v * 2) / 2 + 0.25;
 function setLoc(lon, lat) {
@@ -160,6 +172,8 @@ function validate(b) {
   if (!(b.npatch >= 1 && b.npatch <= 200)) return 'Number of patches must be between 1 and 200.';
   if (b.prec.some(v => !(v >= 0)) || b.temp.some(v => isNaN(v))) return 'Monthly values must be numbers (precipitation factors >= 0).';
   if (!['NOFIRE', 'GLOBFIRM'].includes(b.firemodel)) return 'Unknown fire model.';
+  if (b.ifdisturb && !(Number.isInteger(b.distinterval) && b.distinterval >= 1 && b.distinterval <= 2000))
+    return 'Disturbance interval must be a whole number between 1 and 2000 years (or switched off).';
   if (!(b.co2 > 0)) return 'CO2 factor must be positive.';
   return null;
 }
@@ -175,6 +189,8 @@ $('#f').onsubmit = e => {
   const fd = new FormData($('#f'));
   const body = Object.fromEntries(fd.entries());
   body.spinup = +body.spinup; body.nyear = +body.nyear; body.npatch = +body.npatch; body.co2 = +body.co2;
+  body.ifdisturb = !$('#nodist').checked;
+  body.distinterval = +$('#distinterval').value;
   body.temp = [...document.querySelectorAll('[data-t]')].map(i => +i.value);
   body.prec = [...document.querySelectorAll('[data-p]')].map(i => +i.value);
   body.lon = loc.lon; body.lat = loc.lat;
